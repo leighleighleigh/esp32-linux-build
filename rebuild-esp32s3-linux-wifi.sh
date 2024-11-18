@@ -8,6 +8,7 @@
 # keep_buildroot=y	-- don't redownload the buildroot, only git pull any updates into it
 # keep_bootloader=y	-- don't redownload the bootloader, only rebuild it
 # keep_etc=y		-- don't overwrite the /etc partition
+# menuconfig=y -- run menuconfig
 #
 
 SET_BAUDRATE='-b 2000000'
@@ -17,6 +18,7 @@ CTNG_CONFIG=xtensa-esp32s3-linux-uclibcfdpic
 BUILDROOT_VER=xtensa-2024.08-fdpic
 ESP_HOSTED_VER=ipc-5.1.1
 ESP_HOSTED_CONFIG=sdkconfig.defaults.esp32s3
+OUT="$(pwd)/result/"
 
 function die()
 {
@@ -106,7 +108,13 @@ if [ ! -d build-buildroot-$BUILDROOT_CONFIG ] ; then
 	buildroot/utils/config --file build-buildroot-$BUILDROOT_CONFIG/.config --set-str TOOLCHAIN_EXTERNAL_PREFIX '$(ARCH)-esp32s3-linux-uclibcfdpic'
 	buildroot/utils/config --file build-buildroot-$BUILDROOT_CONFIG/.config --set-str TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX '$(ARCH)-esp32s3-linux-uclibcfdpic'
 fi
+
+if [ ! -z "$menuconfig" ]; then
+  nice make -C buildroot O=`pwd`/build-buildroot-$BUILDROOT_CONFIG menuconfig
+fi
+
 nice make -C buildroot O=`pwd`/build-buildroot-$BUILDROOT_CONFIG
+
 [ -f build-buildroot-$BUILDROOT_CONFIG/images/xipImage -a -f build-buildroot-$BUILDROOT_CONFIG/images/rootfs.cramfs -a -f build-buildroot-$BUILDROOT_CONFIG/images/etc.jffs2 ] || exit 1
 
 #
@@ -121,10 +129,10 @@ cd ../network_adapter
 idf.py set-target esp32s3
 cp $ESP_HOSTED_CONFIG sdkconfig || die "Could not apply IDF config $ESP_HOSTED_CONFIG"
 idf.py build
-read -p 'ready to flash... press enter'
-while ! idf.py $SET_BAUDRATE flash ; do
-	read -p 'failure... press enter to try again'
-done
+#read -p 'ready to flash... press enter'
+#while ! idf.py $SET_BAUDRATE flash ; do
+#	read -p 'failure... press enter to try again'
+#done
 popd
 
 #
@@ -136,3 +144,9 @@ popd
 #	read -p 'ready to flash /etc... press enter'
 #	parttool.py $SET_BAUDRATE write_partition --partition-name etc --input build-buildroot-$BUILDROOT_CONFIG/images/etc.jffs2
 #fi
+
+mkdir -p "$OUT"
+cp -rv esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/build/network_adapter.bin "$OUT"
+cp -rv esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/build/bootloader/bootloader.bin "$OUT"
+cp -rv esp-hosted/esp_hosted_ng/esp/esp_driver/network_adapter/build/partition_table/partition-table.bin "$OUT"
+cp -rv build-buildroot-$BUILDROOT_CONFIG/images/* "$OUT"
